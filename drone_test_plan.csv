@@ -1,0 +1,16 @@
+name,label,maneuver,height_ft,horizontal_ft,radius_ft,duration_s,instructions
+Field Background Before Flight,background,ambient,,,,60,Drone motors off. Record normal field ambience.
+Background Voices,background,voices,,,,30,Drone motors off. Record ordinary conversation at field distances.
+Background Traffic,background,traffic,,,,30,Drone motors off. Record naturally occurring traffic.
+Background Wind and Birds,background,ambient,,,,60,Drone motors off. Record wind and birds.
+Hover 10ft High 20ft Away,drone,hover,10,20,,30,Hover 10 ft above mic height and 20 ft horizontally away.
+Hover 20ft High 20ft Away,drone,hover,20,20,,30,Hover 20 ft above mic height and 20 ft horizontally away.
+Hover 20ft High 50ft Away,drone,hover,20,50,,30,Hover 20 ft above mic height and 50 ft horizontally away.
+Hover 50ft High 50ft Away,drone,hover,50,50,,30,Hover 50 ft above mic height and 50 ft horizontally away.
+Hover 50ft High 100ft Away,drone,hover,50,100,,30,Hover 50 ft above mic height and 100 ft horizontally away.
+Flyby 30ft High 20ft Offset,drone,flyby,30,20,,45,Straight pass 30 ft above mic height with 20 ft closest horizontal approach. Note speed and audible times.
+Flyby 50ft High 50ft Offset,drone,flyby,50,50,,45,Straight pass 50 ft above mic height with 50 ft closest horizontal approach. Repeat opposite direction.
+Overhead Pass 50ft High,drone,overhead,50,0,,45,Pass directly over mic at 50 ft above mic height. Keep operator offset from flight path.
+Orbit 30ft High 50ft Radius,drone,orbit,30,,50,45,Orbit mic at 30 ft above mic height with 50 ft horizontal radius. Note speed and direction.
+Hover With Background Voices,mixed,hover,20,50,,30,Hover with ordinary conversation in background. Note overlap times.
+Field Background After Flight,background,ambient,,,,60,Drone motors off. Record normal field ambience after flying.

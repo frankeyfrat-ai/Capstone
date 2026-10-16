@@ -126,6 +126,9 @@ def update_tracker(folder, rows, preview_dir=None, links_only=False):
     output = folder / 'Dataset_Tracker.xlsx'
     if output.with_name('~$' + output.name).exists():
         raise RuntimeError('Close Dataset_Tracker.xlsx in Excel before refreshing it.')
+    if links_only:
+        add_audio_links(output)
+        return output
     module_link = ROOT / '.tracker_runtime' / 'node_modules'
     if not module_link.exists():
         dependencies = RUNTIME_NODE.parent.parent / 'node_modules'

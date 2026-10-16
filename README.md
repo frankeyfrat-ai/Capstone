@@ -35,7 +35,7 @@ AirPods Max are monitoring output only; their microphone is not used. The WAV st
 
 ## Automatic Excel tracker
 
-Click the blue **ID** cell in either sheet to open that row's WAV in your default audio player. The links use relative `Recordings/...wav` paths: keep the workbook and its Recordings folder together when sharing, and extract a ZIP before opening the workbook. Excel may request permission to open the linked file.
+Click **Play audio** in Notes (or the blue **ID** cell) in either sheet to open that row's WAV in your default audio player. The long filename stays in the hyperlink target rather than appearing in Notes. The links use relative `Recordings/...wav` paths: keep the workbook and its Recordings folder together when sharing, and extract a ZIP before opening the workbook. Excel may request permission to open the linked file.
 
 Every new session includes `Dataset_Tracker.xlsx`, using your friend's two original sheets and table formatting. The original workbook is retained in `templates/dataset_tracker.xlsx`. No extra Python packages are required. Excel generation uses Artifact Tool and the Node runtime installed with Codex on this Mac. After a fresh checkout, the program creates a local `.tracker_runtime/node_modules` link to that runtime automatically; this machine-specific link is excluded from Git. A different computer needs that dependency configured before tracker generation works. Without it, WAV and CSV collection remain available and the program reports the Excel update failure.
 

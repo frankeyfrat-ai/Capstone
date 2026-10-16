@@ -46,12 +46,24 @@ def add_audio_links(path):
             notes = row.find(f'm:c[@r="{notes_col}{number}"]', NS)
             identifier = row.find(f'm:c[@r="A{number}"]', NS)
             match = re.search(r'^File: (.+)$', text(notes) or '', re.M) if notes is not None else None
-            if not match or identifier is None:
+            prior = next((link for link in links if link.get('ref') in {f'A{number}', f'{notes_col}{number}'}), None)
+            old_target = next((rel.get('Target') for rel in rels if prior is not None and rel.get('Id') == prior.get(f'{{{REL}}}id')), None)
+            if (not match and not old_target) or identifier is None or notes is None:
                 continue
-            target = match.group(1).strip()
-            reference = f'A{number}'
+            target = match.group(1).strip() if match else old_target
+            # Keep the actual filename in the link target, not in the visible text.
+            content = text(notes) or ''
+            content = re.sub(r'^File: .+$', 'Play audio', content, count=1, flags=re.M)
+            if not content.startswith('Play audio'):
+                content = 'Play audio\n' + content
+            for child in list(notes):
+                notes.remove(child)
+            notes.set('t', 'inlineStr')
+            inline = ET.SubElement(notes, f'{{{MAIN}}}is')
+            ET.SubElement(inline, f'{{{MAIN}}}t').text = content
+            references = {f'A{number}', f'{notes_col}{number}'}
             for old in list(links):
-                if old.get('ref') == reference:
+                if old.get('ref') in references:
                     old_id = old.get(f'{{{REL}}}id')
                     for relation in list(rels):
                         if relation.get('Id') == old_id:
@@ -63,9 +75,11 @@ def add_audio_links(path):
                 index += 1
             link_id = f'audioLink{index}'
             ET.SubElement(rels, f'{{{PACKAGE}}}Relationship', Id=link_id, Type=TYPE, Target=target, TargetMode='External')
-            ET.SubElement(links, f'{{{MAIN}}}hyperlink', {'ref': reference, f'{{{REL}}}id': link_id,
-                          'tooltip': 'Open this recording in your audio player'})
-            count += 1
+            for reference in sorted(references):
+                ET.SubElement(links, f'{{{MAIN}}}hyperlink', {'ref': reference, f'{{{REL}}}id': link_id,
+                              'display': 'Play audio' if reference.startswith(notes_col) else text(identifier),
+                              'tooltip': 'Open this recording in your audio player'})
+                count += 1
         updates[name] = ET.tostring(root, encoding='utf-8', xml_declaration=True)
         updates[rel_name] = ET.tostring(rels, encoding='utf-8', xml_declaration=True)
     temporary = path.with_suffix('.linked.xlsx')

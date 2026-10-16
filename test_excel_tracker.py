@@ -57,6 +57,8 @@ class TrackerTests(unittest.TestCase):
                     relation = next(r for r in rels if r.get('Id') == link_id)
                     self.assertEqual(relation.get('Target'), row['File'])
                     self.assertNotIn(str(folder), relation.get('Target'))
+                    note_ref = 'M2' if sheet == 'sheet1' else 'G2'
+                    self.assertIsNotNone(root.find(f'.//m:hyperlink[@ref="{note_ref}"]', ns))
             # A moved session retains valid relative link targets.
             import shutil
             moved = Path(directory) / 'Moved Session'
@@ -70,6 +72,10 @@ class TrackerTests(unittest.TestCase):
             self.assertEqual(session['F2'], 'Test Drone')
             self.assertEqual(session['G2'], '90 / 0')
             self.assertEqual(session['K2'], 'Y')
+            self.assertTrue(session['M2'].startswith('Play audio\n'))
+            self.assertNotIn(row['File'], session['M2'])
+            update_tracker(folder, rows, links_only=True)
+            self.assertEqual(worksheet_cells(path, 'xl/worksheets/sheet1.xml'), session)
             self.assertAlmostEqual(float(session['L2']) * 86400, 1)
             self.assertEqual(event.get('D2', ''), '')
             self.assertIn('Label pending', event['G2'])

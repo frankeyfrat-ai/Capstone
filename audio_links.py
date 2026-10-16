@@ -8,9 +8,37 @@ MAIN = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
 REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 PACKAGE = 'http://schemas.openxmlformats.org/package/2006/relationships'
 TYPE = REL + '/hyperlink'
+MC = 'http://schemas.openxmlformats.org/markup-compatibility/2006'
+EXTENSIONS = {
+    'x14ac': 'http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac',
+    'xr': 'http://schemas.microsoft.com/office/spreadsheetml/2014/revision',
+    'xr2': 'http://schemas.microsoft.com/office/spreadsheetml/2015/revision2',
+    'xr3': 'http://schemas.microsoft.com/office/spreadsheetml/2016/revision3',
+}
 NS = {'m': MAIN}
 ET.register_namespace('x', MAIN)
 ET.register_namespace('r', REL)
+ET.register_namespace('mc', MC)
+for prefix, uri in EXTENSIONS.items():
+    ET.register_namespace(prefix, uri)
+
+
+def serialize_sheet(root):
+    # ElementTree drops unused namespace declarations, but mc:Ignorable contains
+    # prefix names as text. Keep only prefixes whose declarations will be emitted.
+    used = set()
+    for node in root.iter():
+        for name in [node.tag, *node.attrib]:
+            if name.startswith('{'):
+                used.add(name[1:].split('}', 1)[0])
+    key = f'{{{MC}}}Ignorable'
+    if key in root.attrib:
+        remaining = [prefix for prefix, uri in EXTENSIONS.items() if uri in used]
+        if remaining:
+            root.set(key, ' '.join(remaining))
+        else:
+            del root.attrib[key]
+    return ET.tostring(root, encoding='utf-8', xml_declaration=True)
 
 
 def add_audio_links(path):
@@ -80,7 +108,7 @@ def add_audio_links(path):
                               'display': 'Play audio' if reference.startswith(notes_col) else text(identifier),
                               'tooltip': 'Open this recording in your audio player'})
                 count += 1
-        updates[name] = ET.tostring(root, encoding='utf-8', xml_declaration=True)
+        updates[name] = serialize_sheet(root)
         updates[rel_name] = ET.tostring(rels, encoding='utf-8', xml_declaration=True)
     temporary = path.with_suffix('.linked.xlsx')
     with ZipFile(temporary, 'w') as archive:

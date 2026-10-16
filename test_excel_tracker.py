@@ -6,12 +6,14 @@ from zipfile import ZipFile
 import xml.etree.ElementTree as ET
 import csv
 import hashlib
+import io
 
 import numpy as np
 
 from drone_recorder import create_session, save_recording
 from excel_tracker import parse_intervals, tracker_payload, update_tracker
 from review_recordings import apply_review
+from audio_links import serialize_sheet, MC
 
 
 def worksheet_cells(path, sheet):
@@ -31,6 +33,20 @@ def worksheet_cells(path, sheet):
 
 
 class TrackerTests(unittest.TestCase):
+    def test_excel_compatibility_prefixes_survive_link_serialization(self):
+        xml = b'''<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+          xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+          xmlns:xr="http://schemas.microsoft.com/office/spreadsheetml/2014/revision"
+          xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac"
+          mc:Ignorable="x14ac xr xr2 xr3" xr:uid="example">
+          <sheetFormatPr x14ac:dyDescent="0.2"/></worksheet>'''
+        saved = serialize_sheet(ET.fromstring(xml))
+        declared = dict(value for _, value in ET.iterparse(io.BytesIO(saved), events=['start-ns']))
+        root = ET.fromstring(saved)
+        for prefix in root.get(f'{{{MC}}}Ignorable', '').split():
+            self.assertIn(prefix, declared)
+        self.assertEqual(root.get(f'{{{MC}}}Ignorable'), 'x14ac xr')
+
     def test_pending_then_reviewed_labels_update_saved_excel_and_csv(self):
         with tempfile.TemporaryDirectory() as directory:
             details = {'Session ID': 'S009', 'Microphone': 'UMIK-2',

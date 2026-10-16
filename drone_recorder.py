@@ -19,7 +19,7 @@ COLUMNS = ["File", "Test name", "Label", "Maneuver", "Height above mic (ft)",
            "Recorded at", "Peak (dBFS)", "RMS (dBFS)", "Quality warnings",
            "Review status", "Setup instructions", "Notes before", "Notes after",
            "Recording ID", "Battery start (%)", "Battery end (%)", "Event intervals (seconds)",
-           "Session ID", "Label source"]
+           "Session ID", "Label source", "Draft bookmarks (seconds)"]
 
 
 def filename(text):
@@ -146,7 +146,7 @@ def event_intervals(row):
     print("Example: 0-5:no_drone;5-20:drone;20-30:no_drone")
     while True:
         existing = row.get('Event intervals (seconds)', '')
-        value = ask("Audible event labels (Enter keeps live markers)", existing or 'u').lower()
+        value = ask("Reviewed event labels (Enter keeps existing reviewed labels, U leaves pending)", existing or 'u').lower()
         if value == 'u':
             return ""
         if value in {'drone', 'no_drone'}:
@@ -183,6 +183,7 @@ def create_session(base, name, details):
         "Review repeat, uncertain, unreviewed and quality-warning takes before training.\n"
         "Use Labels.csv intervals for training; a drone-collection WAV may include no_drone intervals.\n"
         "Blank labels are unconfirmed and must be excluded. Review transitions for human/Bluetooth delay.\n"
+        "Live marks are draft bookmarks only. Use review_recordings.py to enter reviewed labels later.\n"
         "Positions in the index are planned; conditions may vary during five-minute flights.\n"
     )
     write_index(folder, [])
@@ -211,7 +212,7 @@ def save_recording(folder, rows, test, audio, started, status, notes, battery_st
         test["height_ft"], test["horizontal_ft"], test["radius_ft"], len(audio) / 48000,
         started.isoformat(), db(peak), db(rms), "; ".join(warnings), "unreviewed",
         test["instructions"], notes, "", identifier, battery_start, "", intervals,
-        session_id, 'live manual markers' if intervals else 'unconfirmed',
+        session_id, 'manual review' if intervals else 'unconfirmed', "",
     ]))
     sf.write(wav, audio, 48000, subtype="PCM_24")
     rows.append(row)
@@ -268,7 +269,7 @@ def main():
         plan = list(csv.DictReader(handle))
     print(f"\nYour shareable folder:\n{folder}")
     while True:
-        print("\nFIVE-MINUTE COLLECTIONS: B = no drone | F = drone flight with live markers")
+        print("\nFIVE-MINUTE COLLECTIONS: B = background | F = drone flight (label later)")
         print("PLANNED TESTS")
         for i, test in enumerate(plan, 1):
             print(f"{i}: {test['name']}")
@@ -285,7 +286,7 @@ def main():
                             label='no_drone' if choice == 'b' else 'drone', maneuver='ambient' if choice == 'b' else 'varied_flight',
                             height_ft='', horizontal_ft='', radius_ft='', duration_s=300,
                             instructions='Keep drone motors off. Record background conditions.' if choice == 'b' else
-                            'Fly under varied conditions. Mark audible/inaudible changes while recording.')
+                            'Fly under varied conditions. Labels remain pending for later review.')
             elif choice == "c":
                 test = custom_test()
             elif choice.isdigit() and 1 <= int(choice) <= len(plan):
@@ -300,21 +301,27 @@ def main():
             seconds = duration(test["duration_s"])
             notes = ask("Notes before recording")
             battery_start = battery("Battery % before this take")
-            initial = ask('At recording start: audible drone D or no audible drone N', 'n').lower()
-            if initial not in {'d', 'n'}:
-                raise ValueError('Initial state must be D or N.')
+            marking = ask('Add optional live draft bookmarks? Y/N', 'n').lower() == 'y'
+            initial = None
+            if marking:
+                initial = ask('Starting bookmark: D audible / N inaudible / U unknown', 'u').lower()
+                if initial not in {'d', 'n', 'u'}:
+                    raise ValueError('Choose D, N or U.')
+                initial = {'d': 'drone', 'n': 'no_drone', 'u': None}[initial]
             if ask("Position drone. Enter R to record or S to skip", "r").lower() != "r":
                 continue
             print("Starting in 3 seconds. Keep quiet near the mic.", flush=True)
             time.sleep(3)
             try:
                 audio, started, status, intervals = record_live(seconds, device,
-                    'drone' if initial == 'd' else 'no_drone', monitor, marker_delay)
+                    initial, monitor, marker_delay, enable_marking=marking)
             except KeyboardInterrupt:
                 sd.stop()
                 print("Take cancelled; partial audio discarded.")
                 continue
-            wav, row = save_recording(folder, rows, test, audio, started, status, notes, battery_start, intervals)
+            wav, row = save_recording(folder, rows, test, audio, started, status, notes, battery_start)
+            row['Draft bookmarks (seconds)'] = intervals
+            write_index(folder, rows)
             print(f"\nSaved: {wav.name}\nPEAK: {row['Peak (dBFS)']} dBFS")
             if row["Quality warnings"]:
                 print(row["Quality warnings"])
@@ -326,10 +333,11 @@ def main():
             write_index(folder, rows)
             row["Battery end (%)"] = battery("Battery % after this take")
             write_index(folder, rows)
-            previous = row["Event intervals (seconds)"]
-            row["Event intervals (seconds)"] = event_intervals(row)
-            if previous != row["Event intervals (seconds)"]:
-                row["Label source"] = 'manual review' if row["Event intervals (seconds)"] else 'unconfirmed'
+            if row['Label'] == 'no_drone' and ask('Confirm NO drone audible anywhere in this entire take? Y/N', 'n').lower() == 'y':
+                row['Event intervals (seconds)'] = f"0-{row['Duration (seconds)']}:no_drone"
+                row['Label source'] = 'operator-confirmed background'
+            else:
+                print('Labels pending. Review this recording later with review_recordings.py.')
             write_index(folder, rows)
             sync_excel(folder, rows)
         except (ValueError, sd.PortAudioError) as error:

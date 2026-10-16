@@ -18,6 +18,26 @@ class LiveTests(unittest.TestCase):
         self.assertEqual(complete_intervals('2-5:drone', 10),
                          [(0, 2, None), (2, 5, 'drone'), (5, 10, None)])
 
+    def test_record_only_ignores_marking_keys_and_leaves_labels_pending(self):
+        class Stream:
+            def __init__(self, **kwargs):
+                pass
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def read(self, frames):
+                return np.zeros((frames, 1), dtype=np.float32), False
+        @contextmanager
+        def keys():
+            yield 7
+        with patch('live_capture.single_keys', keys), patch('live_capture.sd.InputStream', Stream), \
+             patch('live_capture.select.select', side_effect=[([7], [], []), ([], [], [])]), \
+             patch('live_capture.os.read', return_value=b'd'):
+            audio, _, _, text = record_live(0.01, 1, enable_marking=False)
+        self.assertEqual(len(audio), 480)
+        self.assertEqual(text, '')
+
     def test_five_minute_timeline_round_trips_and_csv_labels(self):
         timeline = Timeline('no_drone')
         timeline.mark(10 * RATE, 'drone')

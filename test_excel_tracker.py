@@ -4,14 +4,74 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zipfile import ZipFile
 import xml.etree.ElementTree as ET
+import csv
+import hashlib
 
 import numpy as np
 
 from drone_recorder import create_session, save_recording
 from excel_tracker import parse_intervals, tracker_payload, update_tracker
+from review_recordings import apply_review
+
+
+def worksheet_cells(path, sheet):
+    ns = {'m': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+    with ZipFile(path) as archive:
+        shared = []
+        if 'xl/sharedStrings.xml' in archive.namelist():
+            shared = [''.join(x.itertext()) for x in ET.fromstring(archive.read('xl/sharedStrings.xml'))]
+        result = {}
+        for cell in ET.fromstring(archive.read(sheet)).findall('.//m:sheetData/m:row/m:c', ns):
+            value, inline = cell.find('m:v', ns), cell.find('m:is', ns)
+            text = value.text if value is not None else ''.join(inline.itertext()) if inline is not None else ''
+            if cell.get('t') == 's':
+                text = shared[int(text)]
+            result[cell.attrib['r']] = text
+        return result
 
 
 class TrackerTests(unittest.TestCase):
+    def test_pending_then_reviewed_labels_update_saved_excel_and_csv(self):
+        with tempfile.TemporaryDirectory() as directory:
+            details = {'Session ID': 'S009', 'Microphone': 'UMIK-2',
+                       'Mic height above ground (ft)': '4', 'Location': 'Field Alpha',
+                       'Weather and wind': 'Clear; wind 3 kt', 'Drone model and propellers': 'Test Drone',
+                       'Windscreen': 'yes'}
+            folder = create_session(Path(directory), 'Review workflow', details)
+            rows = []
+            test = dict(name='Flight', label='drone', maneuver='flyby', height_ft='20',
+                        horizontal_ft='50', radius_ft='', instructions='Fly past mic.')
+            wav, row = save_recording(folder, rows, test, np.full((48000, 1), .1, dtype=np.float32),
+                                      datetime(2026, 10, 16, 10, 0, tzinfo=timezone.utc), '', 'initial note', 90)
+            row['Battery end (%)'] = 0  # Zero must not become unknown.
+            row['Draft bookmarks (seconds)'] = '0-0.5:no_drone;0.5-1:drone'
+            original_hash = hashlib.sha256(wav.read_bytes()).hexdigest()
+            path = update_tracker(folder, rows)
+            session = worksheet_cells(path, 'xl/worksheets/sheet1.xml')
+            event = worksheet_cells(path, 'xl/worksheets/sheet2.xml')
+            self.assertEqual(session['A2'], 'S009')
+            self.assertEqual(session['D2'], 'Field Alpha')
+            self.assertEqual(session['E2'], 'Clear; wind 3 kt')
+            self.assertEqual(session['F2'], 'Test Drone')
+            self.assertEqual(session['G2'], '90 / 0')
+            self.assertEqual(session['K2'], 'Y')
+            self.assertAlmostEqual(float(session['L2']) * 86400, 1)
+            self.assertEqual(event.get('D2', ''), '')
+            self.assertIn('Label pending', event['G2'])
+            # Review includes an uncertain gap, which must stay blank in both handoff files.
+            apply_review(folder, rows, row, '0-0.25:no_drone;0.5-1:drone', 'Reviewed in audio editor')
+            event = worksheet_cells(path, 'xl/worksheets/sheet2.xml')
+            self.assertEqual([event.get(f'D{i}', '') for i in (2, 3, 4)], ['no_drone', '', 'drone'])
+            self.assertAlmostEqual(float(event['B4']) * 86400, .5)
+            self.assertAlmostEqual(float(event['C4']) * 86400, 1)
+            self.assertEqual(event['A4'], 'S009')
+            self.assertIn('Reviewed in audio editor', event['G4'])
+            with (folder / 'Labels.csv').open(encoding='utf-8-sig') as handle:
+                labels = list(csv.DictReader(handle))
+            self.assertEqual([r['label'] for r in labels], ['no_drone', '', 'drone'])
+            self.assertEqual(labels[-1]['session_id'], 'S009')
+            self.assertEqual(hashlib.sha256(wav.read_bytes()).hexdigest(), original_hash)
+
     def test_intervals_validate_boundaries_and_overlap(self):
         self.assertEqual(parse_intervals('0-5:no_drone;5-10:drone', 10),
                          [(0, 5, 'no_drone'), (5, 10, 'drone')])

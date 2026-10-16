@@ -90,6 +90,7 @@ def tracker_payload(rows, details, folder):
         notes = '\n'.join(part for part in [
             f"File: {row['File']}", f"Test: {row['Test name']}",
             f'Recording: {recording_id}',
+            f"Label source: {row.get('Label source', 'unconfirmed')}",
             'Height: mic above ground (m). Distance: horizontal offset/radius (m).',
             f"Scenario: {row['Label']}; maneuver: {row['Maneuver']}; review: {row['Review status']}",
             f"Peak: {row['Peak (dBFS)']} dBFS; {row['Quality warnings']}",
@@ -103,6 +104,9 @@ def tracker_payload(rows, details, folder):
         intervals = complete_intervals(text, seconds)
         for start, end, label in intervals:
             event_notes = f"File: {row['File']}\nRecording: {recording_id}\nManeuver: {row['Maneuver']}; review: {row['Review status']}"
+            event_notes += f"\nLabel source: {row.get('Label source', 'unconfirmed')}"
+            if row.get('Draft bookmarks (seconds)'):
+                event_notes += '\nDraft bookmarks are in Recording_Index.csv; they are not training labels.'
             if not label:
                 event_notes += '\nLabel pending: confirm audible intervals before training.'
             if row.get('Notes after'):

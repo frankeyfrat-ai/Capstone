@@ -15,8 +15,8 @@ BLOCK = 1024
 
 class Timeline:
     def __init__(self, initial_label):
-        if initial_label not in {'drone', 'no_drone'}:
-            raise ValueError('Initial label must be drone or no_drone.')
+        if initial_label not in {'drone', 'no_drone', None}:
+            raise ValueError('Initial label must be drone, no_drone, or unknown.')
         self.changes = [(0, initial_label)]
 
     @property
@@ -47,7 +47,7 @@ class Timeline:
 
 def interval_text(intervals):
     # Enough precision to round-trip 48 kHz frame positions without rounding past EOF.
-    return ';'.join(f'{start:.9f}-{end:.9f}:{label}' for start, end, label in intervals)
+    return ';'.join(f'{start:.9f}-{end:.9f}:{label}' for start, end, label in intervals if label is not None)
 
 
 @contextmanager
@@ -67,14 +67,15 @@ def single_keys():
         termios.tcsetattr(descriptor, termios.TCSADRAIN, original)
 
 
-def record_live(seconds, device, initial_label, monitor_device=None, marker_delay_s=0):
+def record_live(seconds, device, initial_label=None, monitor_device=None, marker_delay_s=0, enable_marking=True):
     total = round(seconds * RATE)
     audio = np.empty((total, 1), dtype=np.float32)
     position = 0
     timeline = Timeline(initial_label)
     warnings = []
     stopped_early = False
-    print('LIVE KEYS: D = audible drone | N = no audible drone | SPACE = toggle | Q = stop and save')
+    print('LIVE KEYS: D/N/SPACE = draft bookmarks | Q = stop and save' if enable_marking else
+          'RECORD ONLY: labels pending later review | Q = stop and save')
     print('Ctrl+C cancels this take. Keep this terminal focused. No Enter needed.', flush=True)
     with single_keys() as descriptor, ExitStack() as stack:
         output = None
@@ -111,13 +112,13 @@ def record_live(seconds, device, initial_label, monitor_device=None, marker_dela
                 label = 'drone' if key == 'd' else 'no_drone' if key == 'n' else None
                 if key == ' ':
                     label = 'no_drone' if timeline.label == 'drone' else 'drone'
-                if label:
+                if label and enable_marking:
                     marker_frame = max(timeline.changes[-1][0], position - round(marker_delay_s * RATE))
                     timeline.mark(marker_frame, label)
                     print(f'\nMARK {marker_frame / RATE:.2f}s: {label}', flush=True)
             current_second = position // RATE
             if current_second != shown_second:
-                print(f'\rRecording {position / RATE:.0f}/{seconds:g}s | {timeline.label}       ',
+                print(f'\rRecording {position / RATE:.0f}/{seconds:g}s | {timeline.label or "unlabeled"}       ',
                       end='', flush=True)
                 shown_second = current_second
             if stopped_early:

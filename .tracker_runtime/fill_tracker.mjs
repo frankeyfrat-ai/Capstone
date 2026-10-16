@@ -52,3 +52,4 @@ if (previewDir) {
 const temporary = output + '.tmp.xlsx';
 await (await SpreadsheetFile.exportXlsx(wb)).save(temporary);
 await fs.rename(temporary,output);
+await fs.rm(temporary + '.inspect.ndjson', {force:true});

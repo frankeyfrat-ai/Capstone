@@ -1,12 +1,13 @@
 import fs from 'node:fs/promises';
 import { FileBlob, SpreadsheetFile } from '@oai/artifact-tool';
 
-const [input, output, payloadPath, previewDir] = process.argv.slice(2);
+const [input, output, payloadPath, previewDir, mode] = process.argv.slice(2);
 const data = JSON.parse(await fs.readFile(payloadPath, 'utf8'));
 const wb = await SpreadsheetFile.importXlsx(await FileBlob.load(input));
 const session = wb.worksheets.getItem('Session Sheet');
 const event = wb.worksheets.getItem('Event Log');
 // Keep the supplied table layouts and the event-label reference list in M intact.
+if (mode !== '--links-only') {
 session.getRange('A2:M2580').clear({applyTo:'contents'});
 event.getRange('A2:G6382').clear({applyTo:'contents'});
 const literal = value => typeof value === 'string' && value.startsWith('=') ? "'"+value : value;
@@ -40,6 +41,26 @@ if (data.events.length) {
 }
 // Notes now include the WAV mapping; give this affected column room to be read.
 event.getRange('G:G').format.columnWidth = 52;
+}
+// Link the existing ID cell, keeping the template's columns and sortable tables intact.
+function addLinks(sheet, maxRow, notesColumn) {
+  const rows = sheet.getRange(`A2:${notesColumn}${maxRow}`).values;
+  for (let i=0; i<rows.length; i++) {
+    const row=rows[i];
+    const notes=String(row[row.length-1] || '');
+    const file=notes.match(/^File: (.+)$/m)?.[1]?.trim();
+    if (!file || !row[0]) continue;
+    const cell=sheet.getRange(`A${i+2}`);
+    // Native link relationships are added after export because this engine does
+    // not evaluate HYPERLINK. Restore IDs from earlier formula-based trackers.
+    const previous=cell.formulas?.[0]?.[0];
+    const formula=previous?.match(/^=?HYPERLINK\("((?:[^"]|"")*)","((?:[^"]|"")*)"\)$/);
+    cell.values=[[formula ? formula[2].replaceAll('""','"') : row[0]]];
+    cell.format.font.color='#0563C1';
+  }
+}
+addLinks(session,2580,'M');
+addLinks(event,6382,'G');
 wb.recalculate();
 if (previewDir) {
   await fs.mkdir(previewDir,{recursive:true});

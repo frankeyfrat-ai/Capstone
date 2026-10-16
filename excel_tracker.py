@@ -9,6 +9,7 @@ import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
+from audio_links import add_audio_links
 
 ROOT = Path(__file__).resolve().parent
 TEMPLATE = ROOT / 'templates' / 'dataset_tracker.xlsx'
@@ -117,7 +118,7 @@ def tracker_payload(rows, details, folder):
     return {'sessions': sessions, 'events': events}
 
 
-def update_tracker(folder, rows, preview_dir=None):
+def update_tracker(folder, rows, preview_dir=None, links_only=False):
     folder = Path(folder)
     payload = tracker_payload(rows, read_details(folder), folder)
     state = folder / '.tracker_data.json'
@@ -136,15 +137,17 @@ def update_tracker(folder, rows, preview_dir=None):
     # Artifact Tool runs from the supplied Codex runtime; no extra Python dependency.
     node = os.environ.get('DRONE_TRACKER_NODE') or shutil.which('node') or str(RUNTIME_NODE)
     command = [node, str(ROOT / '.tracker_runtime' / 'fill_tracker.mjs'),
-               str(TEMPLATE), str(output), str(state)]
-    if preview_dir:
-        command.append(str(preview_dir))
+               str(output if links_only else TEMPLATE), str(output), str(state),
+               str(preview_dir) if preview_dir else '']
+    if links_only:
+        command.append('--links-only')
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=60)
     except subprocess.TimeoutExpired as error:
         raise RuntimeError('Tracker update timed out; use T to retry.') from error
     if result.returncode:
         raise RuntimeError(result.stderr.strip()[-1500:] or 'Excel tracker update failed.')
+    add_audio_links(output)
     return output
 
 
@@ -152,10 +155,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('session_folder', type=Path)
     parser.add_argument('--preview-dir', type=Path)
+    parser.add_argument('--links-only', action='store_true', help='Add WAV links to an existing tracker without rebuilding its data.')
     args = parser.parse_args()
     with (args.session_folder / 'Recording_Index.csv').open(encoding='utf-8-sig', newline='') as handle:
         rows = list(csv.DictReader(handle))
-    print(update_tracker(args.session_folder, rows, args.preview_dir))
+    print(update_tracker(args.session_folder, rows, args.preview_dir, args.links_only))
 
 
 if __name__ == '__main__':

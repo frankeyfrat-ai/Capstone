@@ -47,6 +47,21 @@ class TrackerTests(unittest.TestCase):
             row['Draft bookmarks (seconds)'] = '0-0.5:no_drone;0.5-1:drone'
             original_hash = hashlib.sha256(wav.read_bytes()).hexdigest()
             path = update_tracker(folder, rows)
+            with ZipFile(path) as archive:
+                ns = {'m': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+                for sheet in ('sheet1', 'sheet2'):
+                    root = ET.fromstring(archive.read(f'xl/worksheets/{sheet}.xml'))
+                    link = root.find('.//m:hyperlink[@ref="A2"]', ns)
+                    link_id = link.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+                    rels = ET.fromstring(archive.read(f'xl/worksheets/_rels/{sheet}.xml.rels'))
+                    relation = next(r for r in rels if r.get('Id') == link_id)
+                    self.assertEqual(relation.get('Target'), row['File'])
+                    self.assertNotIn(str(folder), relation.get('Target'))
+            # A moved session retains valid relative link targets.
+            import shutil
+            moved = Path(directory) / 'Moved Session'
+            shutil.copytree(folder, moved)
+            self.assertTrue((moved / row['File']).is_file())
             session = worksheet_cells(path, 'xl/worksheets/sheet1.xml')
             event = worksheet_cells(path, 'xl/worksheets/sheet2.xml')
             self.assertEqual(session['A2'], 'S009')
